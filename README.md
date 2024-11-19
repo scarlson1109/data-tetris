@@ -16,6 +16,13 @@
 
 A custom 2v2 Tetris game based on the classic [ondras/custom-tetris](https://github.com/ondras/custom-tetris) implementation, created as an interactive marketing piece for Vintory.com. This game metaphorically demonstrates the value of quality data sourcing in property management through competitive gameplay.
 
+## Try It Live
+
+Experience the data quality difference yourself:
+[Play Data Tetris](https://codepen.io/VintoryDesign/project/live/9abd65ffd8925865120f948d7f6081c7)
+
+Watch how Vintory's quality data (represented by easy-to-place pieces) leads to cleaner, more efficient gameplay compared to the challenging pieces representing poorly sourced data.
+
 ## The Data Quality Metaphor
 
 In this game, two property management companies face off: Vintory vs "Data "Я" Us". The gameplay mechanics directly reflect real-world data quality:
