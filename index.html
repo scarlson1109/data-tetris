@@ -1,65 +1,105 @@
 <!doctype html>
+<!--
+/**
+ * Custom Tetris - Dual Game System
+ * ===============================
+ * 
+ * Purpose:
+ * - Provides the main entry point for a two-player competitive Tetris game
+ * - Supports both AI vs Human and Human vs Human gameplay modes
+ * - Enables network play through Firebase integration
+ * 
+ * System Architecture:
+ * - Acts as the container for both game instances (attacker and defender)
+ * - Loads all required JavaScript modules and CSS styles
+ * - Manages the game setup UI and scoring displays
+ * 
+ * Key Dependencies:
+ * - game.js: Core game logic and state management
+ * - engine.js: Game loop and rendering
+ * - pit.js: Game board management
+ * - piece.js: Tetris piece behavior
+ * - player.js: Player interaction handling
+ * - attacker/defender modules: Player type implementations
+ * 
+ * Evolution:
+ * 1. Initial Version: Basic single-player Tetris implementation
+ * 2. Dual Game Addition: Split screen setup for two simultaneous games
+ * 3. Network Support: Added Firebase integration for remote play
+ * 4. AI Integration: Support for AI players in both roles
+ * 5. Scoring System: Added competitive scoring displays
+ */
+-->
 <html>
 	<head>
 		<meta charset="utf-8" />
 		<link rel="icon" href="favicon.ico" />
 		<title>Custom Tetris</title>
+		
+		<!-- Dependency: Core game infrastructure -->
 		<script src="js/classList.js"></script>
 		<script src="js/xy.js"></script>
 		<script src="js/game.js"></script>
 		<script src="js/engine.js"></script>
+		
+		<!-- Dependency: Networking support -->
 		<script src="js/engine.network.js"></script>
+		
+		<!-- Dependency: Game mechanics -->
 		<script src="js/pit.js"></script>
 		<script src="js/piece.js"></script>
 		<script src="js/cell.js"></script>
 		<script src="js/ai.js"></script>
 		<script src="js/player.js"></script>
+		
+		<!-- Dependency: Player type implementations -->
 		<script src="js/attacker.random.js"></script>
 		<script src="js/attacker.human.js"></script>
 		<script src="js/attacker.ai.js"></script>
 		<script src="js/defender.human.js"></script>
 		<script src="js/defender.ai.js"></script>
+		
+		<!-- Dependency: UI components -->
 		<script src="js/gallery.js"></script>
 		<script src="js/app.js"></script>
 		<link rel="stylesheet" href="css/style.css" type="text/css" />
 	</head>
 	<body>
-		<div id="left"></div>
-		<div id="right"></div>
+		<!-- State: Left player display and scoring -->
+		<div id="left">
+			<div class="company-name">Data "Я" Us</div>
+			<div id="score-left" class="score"></div>
+		</div>
+		
+		<!-- State: Right player display and scoring -->
+		<div id="right">
+			<div class="company-name">Vintory</div>
+			<div id="score-right" class="score"></div>
+		</div>
+		
+		<!-- Evolution Step 3: Added game title display -->
 		<div id="info">
-			<p>Score: <span id="score"></span></p>
-			<p>Status: <span id="status"></span></p>
+			<div class="info-text small">DATA</div>
+			<div class="info-text large">TETRIS</div>
 		</div>
-		<div id="setup">
-			<h1>Custom Tetris</h1>
-			<p>Change the way Tetris is played!</p>
-			<p>In a traditional Tetris setup, you play as a <em>defender</em>, 
-			trying to position blocks correctly and remain alive as long as possible. This version 
-			allows you to customize <strong>both</strong> roles: defending (as a human or AI) and 
-			attacking (picking blocks as a human, AI or randomly). You can even change them during the gameplay.</p>
-			<p>All of these possibilities can be used in a networked multiplayer game as well, 
-			resulting in a total of <strong>12 games in 1!</strong></p>
-			<button id="play">Play!</button>
-			<div id="attacker">
-				<span>Attacker: </span><select>
-					<option value="Human">Human</option>
-					<option value="AI">AI</option>
-					<option value="Random">Random</option>
-					<option value="Network">Network</option>
-				</select>
-			</div>
-			<div id="defender">
-				<span>Defender: </span><select>
-					<option value="Human">Human</option>
-					<option value="AI">AI</option>
-					<option value="Network">Network</option>
-				</select>
-			</div>
-			<p>This configuration is known as <strong id="description"></strong>.</p>
-			<p id="network"><button id="connect">Connect</button> https://<input type="text" id="server" size="8"/>.firebaseio.com/tetris/<input type="text" id="slug" size="5" /></p>
-			<footer>This contraption was made by <a href="http://ondras.zarovi.cz/">Ondřej Žára</a> for the <a href="https://github.com/github/game-off-2013">GitHub Game Off 2013</a> contest</footer>
+		
+		<!-- Evolution Step 2: Game setup interface -->
+		<div id="setup" style="display:none">
+			<!-- State: Player type selection -->
+			<div id="attacker"></div>
+			<div id="defender"></div>
+			
+			<!-- Evolution Step 3: Network play configuration -->
+			<p id="network">
+				<button id="connect">Connect</button> 
+				https://<input type="text" id="server" size="8"/>.firebaseio.com/tetris/<input type="text" id="slug" size="5" />
+			</p>
 		</div>
+		
+		<!-- Evolution Step 1: Game initialization -->
 		<script>new Game.App();</script>
+		
+		<!-- Dependency: Firebase for network play -->
 		<script type='text/javascript' src='https://cdn.firebase.com/v0/firebase.js'></script>
 	</body>
 </html>

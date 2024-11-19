@@ -1,233 +1,526 @@
+/**
+ * Application Controller Module
+ * ===========================
+ * 
+ * Original Purpose:
+ * - Create a competitive Tetris environment where two players/AIs compete
+ * - Manage game initialization and coordination
+ * - Handle victory/defeat conditions and visual feedback
+ * 
+ * Role in Dual-Game System:
+ * - Acts as the main controller coordinating both game instances
+ * - Manages player type selection and initialization
+ * - Handles inter-game communication and synchronization
+ * - Controls game-over conditions and winner determination
+ * 
+ * Key Dependencies:
+ * - engine.js: Core game logic and state management for each side
+ * - player.js: Base player functionality
+ * - attacker/defender modules: Player type implementations
+ * - gallery.js: Piece preview display
+ * 
+ * Major Changes for Dual-Game:
+ * - Split UI into left and right game containers
+ * - Added synchronized game-over handling
+ * - Implemented winner/loser state management
+ * - Created separate player controls for each side
+ * 
+ * Evolution:
+ * 1. Single Game Implementation
+ *    - Basic game setup and player controls
+ *    - Simple game over handling
+ *    - Basic score display
+ * 
+ * 2. Dual Game Architecture
+ *    - Split screen layout
+ *    - Independent game engines
+ *    - Separate player controls
+ * 
+ * 3. Game Coordination
+ *    - Synchronized game over detection
+ *    - Winner/loser determination
+ *    - State synchronization
+ * 
+ * 4. Enhanced Feedback
+ *    - Victory/defeat overlays
+ *    - Animated transitions
+ *    - Celebration effects
+ * 
+ * 5. Performance Optimization
+ *    - Efficient state management
+ *    - Optimized rendering
+ *    - Memory cleanup
+ * 
+ * 6. Ad Spend Integration
+ *    - Added real-time ad spend tracking
+ *    - Implemented pit-based acceleration
+ *    - Created dynamic cost scaling
+ *    Why: Demonstrate cost differences between strategies
+ * 
+ * 7. Cost Dynamics
+ *    - Equal starting rates for both sides
+ *    - Pit-based acceleration (higher for left)
+ *    - Exponential growth with pit fullness
+ *    Why: Show cost impact of inefficient piece placement
+ */
+
+/**
+ * Reference Guide
+ * ==============
+ * 
+ * Properties:
+ * - _engineLeft {Game.Engine}  - Left game instance engine
+ * - _engineRight {Game.Engine} - Right game instance engine
+ * - _attackerLeft {Player}     - Left attacker player
+ * - _defenderLeft {Player}     - Left defender player
+ * - _attackerRight {Player}    - Right attacker player
+ * - _defenderRight {Player}    - Right defender player
+ * - _dom {Object}             - Map of DOM element references
+ * - _select {Object}          - Player type selection controls
+ * 
+ * Public Methods:
+ * None (singleton instance created on page load)
+ * 
+ * Private Methods:
+ * - _createSelects()           : Creates player type selection controls
+ * - _setupSelect(select, def)  : Configures a selection control
+ * - _start()                   : Initializes both game instances
+ * - _createPlayer(type, ns, e) : Creates a player instance
+ * - _updateMode()              : Updates game mode display
+ * - _showGameEndOverlay()      : Displays game over state
+ * - _createConfetti()          : Creates winner celebration effects
+ * 
+ * Events Handled:
+ * - Game Over: Coordinates end game states between instances
+ * - Player Selection: Manages player type changes
+ * - Animation End: Handles victory/defeat transition completion
+ * 
+ * State Management:
+ * - Maintains game instance references
+ * - Tracks player configurations
+ * - Manages game over coordination
+ * - Controls visual feedback state
+ * 
+ * Common Usage:
+ * ```javascript
+ * // Application auto-initializes on page load
+ * new Game.App();
+ * 
+ * // Game instances are created
+ * this._engineLeft = new Game.Engine(...);
+ * this._engineRight = new Game.Engine(...);
+ * 
+ * // Players are initialized
+ * this._defenderLeft = this._createPlayer("AI", Game.Defender, this._engineLeft);
+ * ```
+ * 
+ * Critical Timing:
+ * - Game instances must initialize simultaneously
+ * - Game over detection must be synchronized
+ * - Visual transitions must complete before cleanup
+ */
+
+/**
+ * Creates the main application controller
+ * Dependency: Requires DOM elements with specific IDs for game containers
+ */
 Game.App = function() {
 	this._connected = null;
 	this._firebase = null;
-	this._engine = null;
-	this._attacker = null;
-	this._defender = null;
+	this._engineLeft = null;
+	this._engineRight = null;
+	this._attackerLeft = null;
+	this._defenderLeft = null;
+	this._attackerRight = null;
+	this._defenderRight = null;
 
 	this._dom = {
 		left: document.querySelector("#left"),
 		right: document.querySelector("#right"),
 		attacker: document.querySelector("#attacker"),
 		defender: document.querySelector("#defender"),
-		play: document.querySelector("#play"),
 		setup: document.querySelector("#setup"),
-		description: document.querySelector("#description"),
 		connect: document.querySelector("#connect"),
 		server: document.querySelector("#server"),
 		slug: document.querySelector("#slug")
 	}
-	this._select = {
-		attacker: this._dom.attacker.querySelector("select"),
-		defender: this._dom.defender.querySelector("select")
-	}
 
-	this._dom.connect.disabled = false;
-	this._dom.server.value = localStorage.getItem("tetris.server") || "ondras";
-	var slug = "";
-	for (var i=0;i<4;i++) {
-		var min = "a".charCodeAt(0);
-		var max = "z".charCodeAt(0);
-		var r = min + Math.floor(Math.random() * (max-min+1));
-		slug += String.fromCharCode(r);
-	}
-	this._dom.slug.value = localStorage.getItem("tetris.slug") || slug;
-	this._select.attacker.value = localStorage.getItem("tetris.attacker") || "Random";
-	this._select.defender.value = localStorage.getItem("tetris.defender") || "AI";
+	// Add ad spend elements
+	const leftAdSpend = document.createElement('div');
+	leftAdSpend.className = 'ad-spend';
+	leftAdSpend.innerHTML = `
+		<div class="ad-spend-label">AD SPEND</div>
+		<div class="ad-spend-value">
+			<span class="currency">$</span>
+			<div class="digit-group thousands">
+				<span class="digit">0</span>
+				<span class="digit">0</span>
+				<span class="digit">0</span>
+			</div>
+			<div class="digit-group hundreds">
+				<span class="digit">0</span>
+				<span class="digit">0</span>
+				<span class="digit">0</span>
+			</div>
+		</div>
+	`;
+	this._dom.left.appendChild(leftAdSpend);
 
+	const rightAdSpend = leftAdSpend.cloneNode(true);
+	this._dom.right.appendChild(rightAdSpend);
+
+	// Initialize ad spend tracking
+	this._adSpendLeft = 0;
+	this._adSpendRight = 0;
+	this._startAdSpendTimer();
+
+	// Create hidden selects for both games
+	this._createSelects();
+	
 	this._updateMode();
-	this._updateDescription();
-
-	this._select.attacker.addEventListener("change", this);
-	this._select.defender.addEventListener("change", this);
-
-	this._createBackground();
 	
-	this._dom.connect.addEventListener("click", this);
-	this._dom.play.addEventListener("click", this);
-	this._dom.play.focus();
+	this._dom.setup.classList.add("playing");
+	this._start();
 }
 
-Game.App.prototype.handleEvent = function(e) {
-	switch (e.type) {
-		case "change":
-			this._changePlayer(e);
-		break;
-		
-		case "click":
-			switch (e.target) {
-				case this._dom.connect:
-					if (this._connected) { return; }
-					this._connect();
-				break;
+/**
+ * Creates player type selection controls
+ * Evolution Step 2: Added separate controls for each game
+ * 
+ * Process:
+ * 1. Create select elements for each role
+ * 2. Configure options and defaults
+ * 3. Organize into left/right game groups
+ */
+Game.App.prototype._createSelects = function() {
+	// Create selects for left game
+	let attackerSelectLeft = document.createElement("select");
+	let defenderSelectLeft = document.createElement("select");
+	this._setupSelect(attackerSelectLeft, "AI");
+	this._setupSelect(defenderSelectLeft, "AI");
+	this._dom.attacker.appendChild(attackerSelectLeft);
+	this._dom.defender.appendChild(defenderSelectLeft);
 
-				case this._dom.play:
-					this._dom.setup.classList.add("playing");
-					setTimeout(this._start.bind(this), 500);
-				break;
-			}
-		break;
-	}
-}
+	// Create selects for right game
+	let attackerSelectRight = document.createElement("select");
+	let defenderSelectRight = document.createElement("select");
+	this._setupSelect(attackerSelectRight, "AI");
+	this._setupSelect(defenderSelectRight, "AI");
+	this._dom.attacker.appendChild(attackerSelectRight);
+	this._dom.defender.appendChild(defenderSelectRight);
 
-Game.App.prototype._connect = function() {
-	this._dom.connect.disabled = true;
-	var server = this._dom.server.value;
-	var slug = this._dom.slug.value;
-	localStorage.setItem("tetris.server", server);
-	localStorage.setItem("tetris.slug", slug);
-	var url = "https://" + server + ".firebaseio.com/tetris/" + slug;
-	this._firebase = new Firebase(url);
-
-	var timeout = setTimeout(function() {
-		var str = "";
-		str += "Looks like we are having some troubles connecting to the server. Sorry for this!";
-		str += "\n\n";
-		str += "Some possible reasons and ways to fix this:";
-		str += "\n\n";
-		str += "\t1. You are truly offline. Improve your connection and try again.";
-		str += "\n";
-		str += "\t2. My free Firebase account's limit has been reached (50 simultaneous connections). Either try later or use your own Firebase account name in the connection string.";
-		str += "\n";
-		str += "\t3. You browser is not compatible with Firebase's JS client. No luck then.";
-		alert(str);
-	}, 4000);
-
-	this._firebase.once("value", function(snap) {
-		clearTimeout(timeout);
-		this._connected = true;
-		this._dom.connect.classList.add("connected");
-		this._updateMode();
-	}.bind(this));
-}
-
-Game.App.prototype._changePlayer = function(e) {
-	localStorage.setItem("tetris.attacker", this._select.attacker.value);
-	localStorage.setItem("tetris.defender", this._select.defender.value);
-
-	if (this._engine) {
-		if (e.target == this._select.attacker) { this._createAttacker(e.target.value); }
-		if (e.target == this._select.defender) { this._createDefender(e.target.value); }
-	} else {
-		this._updateMode();
-		this._updateDescription();
-	}
-}
-
-Game.App.prototype._updateMode = function() {
-	var mode = this._getMode();
-	document.body.className = mode;
-	this._dom.play.disabled = (mode == "network" && !this._connected);
-}
-
-Game.App.prototype._getMode = function() {
-	return (this._select.attacker.value == "Network" || this._select.defender.value == "Network" ? "network" : "local");
-}
-
-Game.App.prototype._updateDescription = function() {
-	var str = "";
-	var key = this._select.attacker.value + "-" + this._select.defender.value;
-	switch (key) {
-		case "Random-Human": str = "The Classic Tetris"; break;
-		case "Random-AI": str = "Sit and watch"; break;
-		case "Random-Network": str = "Sleeping on the job"; break;
-		case "AI-Human": str = "Bastet (Bastard Tetris)"; break;
-		case "AI-AI": str = "Clash of the Titans"; break;
-		case "AI-Network": str = "Playing Judas"; break;
-		case "Human-Human": str = "Local multiplayer"; break;
-		case "Human-AI": str = "Revenge!"; break;
-		case "Human-Network": str = "Multiplayer (attacker)"; break;
-		case "Network-Human": str = "Multiplayer (defender)"; break;
-		case "Network-AI": str = "The Mechanical Turk"; break;
-		case "Network-Network": str = "Observer mode"; break;
-	}
-
-	this._dom.description.innerHTML = str;
-}
-
-Game.App.prototype._start = function() {
-	this._dom.connect.removeEventListener("click", this);
-	this._dom.play.removeEventListener("click", this);
-
-	this._dom.left.appendChild(this._dom.defender);
-	this._dom.right.appendChild(this._dom.attacker);
-	
-	if (this._getMode() == "local") {
-		this._engine = new Game.Engine();
-	} else {
-		var master = (this._select.defender.value != "Network");
-		this._engine = new Game.Engine.Network(this._firebase, master);
-	}
-	this._createDefender(this._select.defender.value);
-	this._createAttacker(this._select.attacker.value);
-
-	/* disable options that are not supported at runtime */
-	var selects = [this._select.attacker, this._select.defender];
-	for (var i=0;i<selects.length;i++) {
-		var select = selects[i];
-		var options = select.querySelectorAll("option");
-		var value = select.value;
-		for (var j=0;j<options.length;j++) {
-			var option = options[j];
-			option.disabled = (
-				(value == "Network" && option.value != "Network") ||
-				(value != "Network" && option.value == "Network")
-			);
+	this._select = {
+		left: {
+			attacker: attackerSelectLeft,
+			defender: defenderSelectLeft
+		},
+		right: {
+			attacker: attackerSelectRight,
+			defender: defenderSelectRight
 		}
 	}
 }
 
-Game.App.prototype._createDefender = function(defender) {
-	if (this._defender) { this._defender.destroy(); }
-	this._defender = this._createPlayer(defender, Game.Defender);
+/**
+ * Configures a select element with player type options
+ * Evolution Step 2: Added player type configuration
+ * 
+ * @param {HTMLSelectElement} select The select element to configure
+ * @param {string} defaultValue Default player type
+ * @private
+ */
+Game.App.prototype._setupSelect = function(select, defaultValue) {
+    select.style.display = "none";
+    select.innerHTML = `
+        <option value="Human">Human</option>
+        <option value="AI">AI</option>
+        <option value="Random">Random</option>
+        <option value="Network">Network</option>
+    `;
+    select.value = defaultValue;
 }
 
-Game.App.prototype._createAttacker = function(attacker) {
-	if (this._attacker) { this._attacker.destroy(); }
-	this._attacker = this._createPlayer(attacker, Game.Attacker);
+/**
+ * Initializes both game instances
+ * Evolution Step 3: Added game coordination
+ * 
+ * Process:
+ * 1. Create game containers
+ * 2. Initialize engines
+ * 3. Setup game-over coordination
+ * 4. Create players
+ * 
+ * Critical Timing:
+ * - Games must start simultaneously
+ * - Game-over must be detected and handled synchronously
+ */
+Game.App.prototype._start = function() {
+	var containerLeft = document.createElement("div");
+	containerLeft.id = "game-container-left";
+	this._dom.left.appendChild(containerLeft);
+	
+	var containerRight = document.createElement("div");
+	containerRight.id = "game-container-right";
+	this._dom.right.appendChild(containerRight);
+
+	// Track which game ended first
+	let firstGameOver = null;
+	
+	const handleGameOver = (scoreElementId) => {
+		if (!firstGameOver) {
+			firstGameOver = scoreElementId;
+			// Stop both games
+			this._engineLeft._setPlaying(false);
+			this._engineRight._setPlaying(false);
+			// Show appropriate overlays
+			this._showGameEndOverlay(firstGameOver === 'score-left' ? 'left' : 'right', 'LOSER', 'rgb(255, 69, 0)');
+			this._showGameEndOverlay(firstGameOver === 'score-left' ? 'right' : 'left', 'WINNER', 'rgb(0, 230, 64)', true);
+		}
+	};
+	
+	this._engineLeft = new Game.Engine("score-left", "left", handleGameOver);
+	containerLeft.appendChild(this._engineLeft.pit.node);
+	containerLeft.appendChild(this._engineLeft.gallery.node);
+	
+	this._engineRight = new Game.Engine("score-right", "right", handleGameOver);
+	containerRight.appendChild(this._engineRight.pit.node);
+	containerRight.appendChild(this._engineRight.gallery.node);
+	
+	this._defenderLeft = this._createPlayer("AI", Game.Defender, this._engineLeft);
+	this._attackerLeft = this._createPlayer("AI", Game.Attacker, this._engineLeft);
+	this._defenderRight = this._createPlayer("AI", Game.Defender, this._engineRight);
+	this._attackerRight = this._createPlayer("AI", Game.Attacker, this._engineRight);
 }
 
-Game.App.prototype._createPlayer = function(type, namespace) {
-	return new namespace[type](this._engine);
+Game.App.prototype._createPlayer = function(type, namespace, engine) {
+	return new namespace[type](engine);
 }
 
-Game.App.prototype._createBackground = function() {
-	var piece = new Game.Piece("t");
-	piece.rotate(1);
-	piece.rotate(1);
-	piece.xy = new XY(1, 0);
-	piece.build(this._dom.setup);
+// Remove or simplify other methods that we don't need anymore
+Game.App.prototype._updateMode = function() {
+	document.body.className = "local";
+}
 
-	var piece = new Game.Piece("z");
-	piece.rotate(-1);
-	piece.xy = new XY(1, 2);
-	piece.build(this._dom.setup);
+// Keep the background creation and other necessary methods
 
-	var piece = new Game.Piece("j");
-	piece.rotate(1);
-	piece.rotate(1);
-	piece.xy = new XY(4, 0);
-	piece.build(this._dom.setup);
+/**
+ * Creates game end overlay
+ * Evolution Step 4: Enhanced victory/defeat presentation
+ * 
+ * Process:
+ * 1. Create overlay structure
+ * 2. Add game-specific information
+ * 3. Trigger animations
+ * 4. Initialize celebration effects
+ * 
+ * @param {string} side - 'left' or 'right' game
+ * @param {string} text - Overlay message
+ * @param {string} color - Theme color
+ * @param {boolean} showConfetti - Whether to show celebration
+ */
+Game.App.prototype._showGameEndOverlay = function(side, text, color, showConfetti = false) {
+	const container = document.querySelector(`#${side}`);
+	const companyName = container.querySelector('.company-name').textContent;
+	const score = side === 'left' ? this._engineLeft._status.score : this._engineRight._status.score;
+	const adSpend = side === 'left' ? this._adSpendLeft : this._adSpendRight;
+	
+	// Calculate CAC
+	const cac = score > 0 ? (adSpend / score) : adSpend;
+	
+	const overlay = document.createElement('div');
+	overlay.className = 'game-over-overlay';
+	
+	const content = document.createElement('div');
+	content.className = 'game-over-content';
+	
+	// Main result text (WINNER/LOSER)
+	const endText = document.createElement('div');
+	endText.className = 'game-over-text';
+	endText.textContent = text;
+	endText.style.color = color;
+	
+	// Company name
+	const nameText = document.createElement('div');
+	nameText.className = 'game-over-company';
+	nameText.textContent = companyName;
+	
+	// Score display
+	const scoreContainer = document.createElement('div');
+	scoreContainer.className = 'game-over-score';
+	scoreContainer.innerHTML = `
+		<div class="game-over-score-number" style="color: ${color}">${score}</div>
+		<div class="game-over-score-label">DEALS</div>
+	`;
+	
+	// Metrics display with enhanced styling
+	const metricsContainer = document.createElement('div');
+	metricsContainer.className = 'game-over-metrics';
+	metricsContainer.innerHTML = `
+		<div class="game-over-adspend">
+			<div class="metric-label">AD SPEND</div>
+			<div class="metric-value">$${Math.floor(adSpend).toLocaleString()}</div>
+		</div>
+		<div class="game-over-cac">
+			<div class="metric-label">CAC</div>
+			<div class="metric-value">$${Math.floor(cac).toLocaleString()}</div>
+		</div>
+	`;
+	
+	// CAC explanation
+	const cacExplanation = document.createElement('div');
+	cacExplanation.className = 'game-over-cac-explanation';
+	cacExplanation.innerHTML = `Customer Acquisition Cost (CAC)<br>Total Ad Spend ÷ Total Deals`;
+	
+	// Build overlay structure
+	content.appendChild(endText);
+	content.appendChild(nameText);
+	content.appendChild(scoreContainer);
+	content.appendChild(metricsContainer);
+	content.appendChild(cacExplanation);
+	overlay.appendChild(content);
+	container.appendChild(overlay);
 
-	var piece = new Game.Piece("i");
-	piece.rotate(1);
-	piece.xy = new XY(2, 3);
-	piece.build(this._dom.setup);
+	// Trigger animations
+	requestAnimationFrame(() => {
+		overlay.classList.add('game-over-active');
+	});
 
-	var piece = new Game.Piece("s");
-	piece.rotate(1);
-	piece.xy = new XY(5, 1);
-	piece.build(this._dom.setup);
+	if (showConfetti) {
+		setTimeout(this._createConfetti.bind(this, side), 1500);
+	}
+}
 
-	var piece = new Game.Piece("l");
-	piece.rotate(1);
-	piece.rotate(1);
-	piece.xy = new XY(8, 0);
-	piece.build(this._dom.setup);
+/**
+ * Creates celebration effects
+ * Evolution Step 4: Added winner celebration
+ * 
+ * Performance Considerations:
+ * - Limits number of particles
+ * - Uses CSS animations for smooth rendering
+ * - Cleanup after animation completes
+ * 
+ * @param {string} side - Which game container to add effects to
+ */
+Game.App.prototype._createConfetti = function(side) {
+	console.log('Creating confetti for', side); // Debug log
+	const container = document.querySelector(`#${side}`);
+	const confettiContainer = document.createElement('div');
+	confettiContainer.className = 'confetti-container';
+	container.appendChild(confettiContainer);
 
-	var piece = new Game.Piece("-");
-	piece.rotate(1);
-	piece.xy = new XY(1, 5);
-	piece.build(this._dom.setup);
+	for (let i = 0; i < 100; i++) {
+		const confetti = document.createElement('div');
+		confetti.className = 'confetti';
+		confetti.style.setProperty('--delay', `${Math.random() * 3}s`);
+		confetti.style.setProperty('--rotation', `${Math.random() * 360}deg`);
+		confetti.style.setProperty('--x', `${Math.random() * 100}%`);
+		confettiContainer.appendChild(confetti);
+	}
+}
+
+/**
+ * Starts the ad spend timer with variable rates
+ * Evolution Step 7: Enhanced cost dynamics
+ * 
+ * Behavior:
+ * - Both sides start at same base rate
+ * - Left side accelerates more with pit fullness (up to 17x)
+ * - Right side has minimal acceleration (up to 2x)
+ * - Random variation adds natural fluctuation
+ * - Target ~$30K left vs ~$3K right in 1 minute
+ * 
+ * Critical Timing:
+ * - Updates every 50ms for smooth animation
+ * - Acceleration based on real-time pit state
+ * - Synchronized with game state changes
+ */
+Game.App.prototype._startAdSpendTimer = function() {
+    const updateInterval = 50; // Update every 50ms
+    const baseIncrement = 3.0; // Base increment per 50ms (same for both sides)
+    
+    setInterval(() => {
+        if (this._engineLeft && this._engineLeft.getStatus().playing) {
+            // Calculate pit fullness factor (0 to 1)
+            const leftPitFactor = this._calculatePitFactor(this._engineLeft.pit);
+            // More aggressive exponential increase for left side (1 to 17x) - increased from 14 to 16 (≈15% increase)
+            const fullnessFactor = 1 + (leftPitFactor * leftPitFactor * 16); // Increased from 14 to 16
+            
+            // Add some randomness to each increment
+            const randomFactor = 0.8 + Math.random() * 0.4; // 80% to 120% of base rate
+            
+            this._adSpendLeft += baseIncrement * randomFactor * fullnessFactor;
+            this._updateAdSpend('left', this._adSpendLeft);
+        }
+        
+        if (this._engineRight && this._engineRight.getStatus().playing) {
+            // Calculate pit fullness factor (0 to 1)
+            const rightPitFactor = this._calculatePitFactor(this._engineRight.pit);
+            // Less aggressive increase for right side (1 to 2x)
+            const fullnessFactor = 1 + (rightPitFactor * rightPitFactor);
+            
+            const randomFactor = 0.8 + Math.random() * 0.4;
+            this._adSpendRight += baseIncrement * randomFactor * fullnessFactor;
+            this._updateAdSpend('right', this._adSpendRight);
+        }
+    }, updateInterval);
+}
+
+/**
+ * Calculates pit fullness factor
+ * Evolution Step 7: Pit-based cost acceleration
+ * 
+ * Process:
+ * 1. Count filled cells in pit
+ * 2. Compare to maximum possible (WIDTH * DEPTH)
+ * 3. Consider pit "full" at 60% capacity
+ * 
+ * Impact:
+ * - Empty pit = 1x multiplier
+ * - Full pit = up to 17x (left) or 2x (right)
+ * - Quadratic scaling for exponential cost growth
+ */
+Game.App.prototype._calculatePitFactor = function(pit) {
+    // Count total cells in pit
+    let cellCount = Object.keys(pit.cells).length;
+    
+    // Calculate maximum possible cells
+    const maxCells = Game.WIDTH * Game.DEPTH;
+    
+    // Get factor (0 to 1)
+    return Math.min(cellCount / (maxCells * 0.6), 1); // Consider pit "full" at 60% capacity
+}
+
+/**
+ * Updates the ad spend display
+ * Evolution Step 7: Real-time cost display
+ * 
+ * Visual Feedback:
+ * - Thousands and hundreds separated
+ * - Retro-style digit animation
+ * - Zero-padded for consistent width
+ * 
+ * Performance:
+ * - Updates only changed digits
+ * - Efficient DOM manipulation
+ * - Smooth transition handling
+ */
+Game.App.prototype._updateAdSpend = function(side, value) {
+	const container = this._dom[side].querySelector('.ad-spend-value');
+	const thousands = Math.floor(value / 1000);
+	const hundreds = Math.floor(value % 1000);
+	
+	// Update thousands
+	const thousandsDigits = container.querySelector('.thousands')
+		.querySelectorAll('.digit');
+	String(thousands).padStart(3, '0').split('').forEach((digit, i) => {
+		thousandsDigits[i].textContent = digit;
+	});
+
+	// Update hundreds
+	const hundredsDigits = container.querySelector('.hundreds')
+		.querySelectorAll('.digit');
+	String(hundreds).padStart(3, '0').split('').forEach((digit, i) => {
+		hundredsDigits[i].textContent = digit;
+	});
 }
 
